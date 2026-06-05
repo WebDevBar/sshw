@@ -194,7 +194,7 @@ func genSSHConfig(node *Node) *defaultClient {
 	config := &ssh.ClientConfig{
 		User:            node.user(),
 		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: knownHostsCallback(),
 		Timeout:         time.Second * 10,
 	}
 
