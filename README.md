@@ -79,3 +79,14 @@ config example:
     - { delay: 1500, cmd: 0 }
     - { cmd: "echo 1" }
 ```
+
+## Credits
+
+This repository is a vendored fork maintained by [WebDevBar](https://github.com/WebDevBar) for internal use. Full credit to the upstream authors:
+
+- **Original author** — [yinheli](https://github.com/yinheli) · [yinheli/sshw](https://github.com/yinheli/sshw)
+- **Fork improvements** — [vaska94](https://github.com/vaska94) · [vaska94/sshw](https://github.com/vaska94/sshw)
+  (modernized deprecated APIs, custom terminal select widget, case-insensitive search, `copy-id` support, dependency cleanup)
+- **This fork** — [WebDevBar/sshw](https://github.com/WebDevBar/sshw) — tracks `vaska94/sshw` upstream; updates synced and reviewed manually.
+
+Licensed under the [MIT License](./LICENSE) © 2018–2026 yinheli (me@yinheli.com).
