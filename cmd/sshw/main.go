@@ -81,7 +81,8 @@ func main() {
 		}
 	}
 
-	node := choose(nil, sshw.GetConfig())
+	leaves := flattenLeaves(sshw.GetConfig(), "")
+	node := choose(nil, sshw.GetConfig(), leaves)
 	if node == nil {
 		return
 	}
@@ -117,28 +118,24 @@ func main() {
 	client.Login()
 }
 
-func choose(parent, trees []*sshw.Node) *sshw.Node {
-	index, err := selectNode("select host", trees, 20)
-	if err != nil || index < 0 {
+func choose(parent, trees []*sshw.Node, leaves []leaf) *sshw.Node {
+	node, err := selectNode("select host", trees, leaves, 20)
+	if err != nil || node == nil {
 		return nil
 	}
-
-	node := trees[index]
 	if len(node.Children) > 0 {
 		first := node.Children[0]
 		if first.Name != prev {
 			first = &sshw.Node{Name: prev}
 			node.Children = append(node.Children[:0], append([]*sshw.Node{first}, node.Children...)...)
 		}
-		return choose(trees, node.Children)
+		return choose(trees, node.Children, leaves)
 	}
-
 	if node.Name == prev {
 		if parent == nil {
-			return choose(nil, sshw.GetConfig())
+			return choose(nil, sshw.GetConfig(), leaves)
 		}
-		return choose(nil, parent)
+		return choose(nil, parent, leaves)
 	}
-
 	return node
 }
