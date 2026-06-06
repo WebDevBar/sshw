@@ -5,7 +5,9 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kevinburke/ssh_config"
@@ -69,9 +71,22 @@ func LoadConfig() error {
 		return err
 	}
 
+	sortNodes(c)
 	config = c
 
 	return nil
+}
+
+// sortNodes orders each level (folders and hosts together) by name,
+// case-insensitively, recursing into children. Numeric folder prefixes
+// (00_, 01_, ...) thus sort as intended in the picker.
+func sortNodes(nodes []*Node) {
+	sort.SliceStable(nodes, func(i, j int) bool {
+		return strings.ToLower(nodes[i].Name) < strings.ToLower(nodes[j].Name)
+	})
+	for _, n := range nodes {
+		sortNodes(n.Children)
+	}
 }
 
 func LoadSshConfig() error {
