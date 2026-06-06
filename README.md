@@ -88,5 +88,6 @@ This repository is a vendored fork maintained by [WebDevBar](https://github.com/
 - **Fork improvements** — [vaska94](https://github.com/vaska94) · [vaska94/sshw](https://github.com/vaska94/sshw)
   (modernized deprecated APIs, custom terminal select widget, case-insensitive search, `copy-id` support, dependency cleanup)
 - **This fork** — [WebDevBar/sshw](https://github.com/WebDevBar/sshw) — tracks `vaska94/sshw` upstream; updates synced and reviewed manually.
+  WebDevBar enhancements: host-key verification (trust-on-first-use via `~/.ssh/known_hosts`, with `HostKeyAlgorithms` pinned to the trusted key type), global cross-folder search in the host picker, and case-insensitively sorted folders/hosts. These were developed with [Claude Code](https://claude.com/claude-code) (Anthropic).
 
 Licensed under the [MIT License](./LICENSE) © 2018–2026 yinheli (me@yinheli.com).
