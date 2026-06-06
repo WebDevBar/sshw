@@ -13,14 +13,13 @@ import (
 const prev = "-parent-"
 
 var (
-	Build = "devel"
-	V     = flag.Bool("version", false, "show version")
-	H     = flag.Bool("help", false, "show help")
-	S     = flag.Bool("s", false, "use local ssh config '~/.ssh/config'")
+	Build  = "devel"
+	V      = flag.Bool("version", false, "show version")
+	H      = flag.Bool("help", false, "show help")
+	S      = flag.Bool("s", false, "use local ssh config '~/.ssh/config'")
 	CopyID = flag.Bool("copy-id", false, "copy SSH public key to selected host")
 
 	log = sshw.GetLogger()
-
 )
 
 func findAlias(nodes []*sshw.Node, nodeAlias string) *sshw.Node {

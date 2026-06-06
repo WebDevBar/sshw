@@ -183,8 +183,6 @@ func selectNode(label string, items []*sshw.Node, leaves []leaf, size int) (*ssh
 	}
 }
 
-
-
 func clearScreen(lines int) {
 	for i := 0; i < lines; i++ {
 		fmt.Fprint(os.Stderr, ansiCursorUp+ansiClearLine)
