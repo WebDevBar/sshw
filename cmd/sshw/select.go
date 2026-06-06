@@ -22,9 +22,11 @@ const (
 	ansiShowCur   = "\033[?25h"
 )
 
-func matchNode(input string, node *sshw.Node) bool {
-	content := strings.ToLower(node.Name + " " + node.User + " " + node.Host)
+// matchText reports whether content matches the query (case-insensitive;
+// space-separated terms are ANDed; empty query matches everything).
+func matchText(input, content string) bool {
 	input = strings.ToLower(input)
+	content = strings.ToLower(content)
 	if strings.Contains(input, " ") {
 		for _, key := range strings.Split(input, " ") {
 			key = strings.TrimSpace(key)
@@ -35,6 +37,10 @@ func matchNode(input string, node *sshw.Node) bool {
 		return true
 	}
 	return strings.Contains(content, input)
+}
+
+func matchNode(input string, node *sshw.Node) bool {
+	return matchText(input, node.Name+" "+node.User+" "+node.Host)
 }
 
 func formatActive(n *sshw.Node) string {
