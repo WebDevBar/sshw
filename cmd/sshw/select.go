@@ -249,3 +249,30 @@ func flattenLeaves(nodes []*sshw.Node, prefix string) []leaf {
 func leafContent(l leaf) string {
 	return l.path + " " + l.node.Name + " " + l.node.User + " " + l.node.Host
 }
+
+// entry is one displayable row: a node, plus an optional breadcrumb path
+// (non-empty only for global search results).
+type entry struct {
+	node *sshw.Node
+	path string
+}
+
+// viewEntries returns the rows to display: the current level when search is
+// empty, otherwise the global leaves filtered by the query (matched on
+// path+name+user+host).
+func viewEntries(search string, items []*sshw.Node, leaves []leaf) []entry {
+	if search == "" {
+		es := make([]entry, len(items))
+		for i, n := range items {
+			es[i] = entry{node: n}
+		}
+		return es
+	}
+	var es []entry
+	for _, l := range leaves {
+		if matchText(search, leafContent(l)) {
+			es = append(es, entry{node: l.node, path: l.path})
+		}
+	}
+	return es
+}

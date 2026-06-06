@@ -56,3 +56,21 @@ func TestLeafContent(t *testing.T) {
 		t.Errorf("leafContent=%q", got)
 	}
 }
+
+func TestViewEntries(t *testing.T) {
+	items := []*sshw.Node{{Name: "GROUP", Children: []*sshw.Node{{Name: "x", Host: "1"}}}, {Name: "top", Host: "9"}}
+	leaves := []leaf{
+		{node: &sshw.Node{Name: "WSHUB", User: "wshub", Host: "1.2.3.4"}, path: "DEV"},
+		{node: &sshw.Node{Name: "other", Host: "5.6.7.8"}, path: "PROD"},
+	}
+	// empty search -> current level items, no paths
+	empty := viewEntries("", items, leaves)
+	if len(empty) != 2 || empty[0].node.Name != "GROUP" || empty[0].path != "" {
+		t.Fatalf("empty view wrong: %+v", empty)
+	}
+	// non-empty -> filtered global leaves with paths
+	hits := viewEntries("dev", items, leaves)
+	if len(hits) != 1 || hits[0].node.Name != "WSHUB" || hits[0].path != "DEV" {
+		t.Fatalf("search view wrong: %+v", hits)
+	}
+}
