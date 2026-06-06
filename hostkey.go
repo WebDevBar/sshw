@@ -1,6 +1,8 @@
 package sshw
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"net"
@@ -51,6 +53,56 @@ func knownHostsCallback() ssh.HostKeyCallback {
 			return err
 		}
 	}
+}
+
+// knownHostsAlgorithms returns the host-key algorithms already pinned for
+// hostport in ~/.ssh/known_hosts, so the SSH client requests a key type we
+// already trust (mirroring OpenSSH). Without this, Go negotiates its default
+// host-key type; if the server offers a type we have NOT pinned (but the host
+// IS known via another type), the known_hosts check reports a false "mismatch".
+//
+// x/crypto v0.52's knownhosts has no public HostKeyAlgorithms API, so we derive
+// it by probing the checker with a throwaway key: for a KNOWN host the checker
+// returns a *knownhosts.KeyError whose Want lists the pinned keys. Returns nil
+// for unknown hosts (first-connect TOFU then uses Go's defaults).
+func knownHostsAlgorithms(hostport string) []string {
+	path, err := knownHostsPath()
+	if err != nil {
+		return nil
+	}
+	checker, err := knownhosts.New(path)
+	if err != nil {
+		return nil
+	}
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil
+	}
+	signer, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		return nil
+	}
+	probeErr := checker(hostport, &net.TCPAddr{}, signer.PublicKey())
+	var keyErr *knownhosts.KeyError
+	if !errors.As(probeErr, &keyErr) || len(keyErr.Want) == 0 {
+		return nil // unknown host (or no pin) -> let Go use its defaults
+	}
+	seen := map[string]bool{}
+	var algos []string
+	for _, kk := range keyErr.Want {
+		t := kk.Key.Type()
+		if seen[t] {
+			continue
+		}
+		seen[t] = true
+		if t == ssh.KeyAlgoRSA {
+			// advertise the SHA-2 RSA variants too (modern servers sign with these)
+			algos = append(algos, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSA)
+		} else {
+			algos = append(algos, t)
+		}
+	}
+	return algos
 }
 
 func failClosed(string, net.Addr, ssh.PublicKey) error {

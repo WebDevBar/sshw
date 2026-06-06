@@ -201,6 +201,13 @@ func genSSHConfig(node *Node) *defaultClient {
 	config.SetDefaults()
 	config.Ciphers = append(config.Ciphers, DefaultCiphers...)
 
+	// Pin the host-key algorithm(s) to what we already trust in known_hosts, so
+	// the server hands us a key type we can verify (avoids false mismatches when
+	// it offers an un-pinned type). Empty for unknown hosts -> Go defaults (TOFU).
+	if algos := knownHostsAlgorithms(net.JoinHostPort(node.Host, strconv.Itoa(node.port()))); len(algos) > 0 {
+		config.HostKeyAlgorithms = algos
+	}
+
 	return &defaultClient{
 		clientConfig: config,
 		node:         node,
