@@ -216,3 +216,36 @@ func clearScreen(lines int) {
 		fmt.Fprint(os.Stderr, ansiCursorUp+ansiClearLine)
 	}
 }
+
+// leaf is a connectable host plus its "/"-joined folder path.
+type leaf struct {
+	node *sshw.Node
+	path string
+}
+
+// flattenLeaves walks the tree and returns every connectable leaf host with its
+// breadcrumb path. A node is a searchable leaf iff it has no children, has a
+// Host, and is not the synthetic "-parent-" sentinel.
+func flattenLeaves(nodes []*sshw.Node, prefix string) []leaf {
+	var out []leaf
+	for _, n := range nodes {
+		if len(n.Children) > 0 {
+			child := n.Name
+			if prefix != "" {
+				child = prefix + "/" + n.Name
+			}
+			out = append(out, flattenLeaves(n.Children, child)...)
+			continue
+		}
+		if n.Host == "" || n.Name == prev {
+			continue
+		}
+		out = append(out, leaf{node: n, path: prefix})
+	}
+	return out
+}
+
+// leafContent is the text searched for a leaf: path + name + user + host.
+func leafContent(l leaf) string {
+	return l.path + " " + l.node.Name + " " + l.node.User + " " + l.node.Host
+}
