@@ -80,6 +80,71 @@ config example:
     - { cmd: "echo 1" }
 ```
 
+## Managing hosts in the TUI
+
+This fork adds in-TUI host management. While the host picker is open, the
+following keys are available (shown in the footer bar):
+
+| Key | Action |
+|-----|--------|
+| `^A` | Add a new host (opens a form) |
+| `^E` | Edit the selected host or folder |
+| `^D` | Delete the selected host or folder (with confirmation) |
+| `^O` | Open the options hub (master password, share, FileZilla import/export) |
+| `^S` | Share — copy a safe summary of the selected host to the clipboard |
+
+Changes are written back to `~/.sshw.yml` automatically (atomic write with a
+`.bak` backup left alongside).
+
+### Master-password encryption
+
+Master-password protection is **off by default**. Enable it via `^O` →
+"Master Password". When enabled, all `password` fields in `~/.sshw.yml` are
+stored as self-describing `enc:` strings (argon2id key-derivation +
+XChaCha20-Poly1305 AEAD). You are prompted for the master password once per
+session on first decrypt; the derived key is cached in memory for the run.
+
+Disabling the master password decrypts all fields back to plaintext in
+`~/.sshw.yml`.
+
+> **Note:** if you use an external tool to sync `sites.json` → `~/.sshw.yml`,
+> that sync must be updated to understand the `enc:` format — prompt for the
+> master password at sync time; leaving it blank writes plaintext.
+
+### FileZilla import / export
+
+Via `^O` → "FileZilla Import" or "FileZilla Export":
+
+- **Import** reads a `sitemanager.xml` file and merges SFTP entries into
+  `~/.sshw.yml` (existing hosts with the same folder-path + name are
+  left untouched; new ones are appended). FTP-only entries are skipped.
+- **Export** writes the current hosts to a `sitemanager.xml` compatible with
+  FileZilla's Site Manager.
+
+### Host-key fingerprint pinning
+
+Add a `fingerprint` field to any host entry to enable verified first-connect:
+
+```yaml
+- name: production
+  host: 203.0.113.10
+  user: deploy
+  password: secret
+  fingerprint: "SHA256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+When `fingerprint` is set, the presented host key is checked against it before
+the usual `~/.ssh/known_hosts` trust-on-first-use logic. A mismatch aborts the
+connection. Leave the field absent to use plain TOFU (the default).
+
+The fingerprint for a server can be obtained with:
+
+```
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+or from the AWS EC2 console System Log on first boot.
+
 ## Credits
 
 This repository is a vendored fork maintained by [WebDevBar](https://github.com/WebDevBar) for internal use. Full credit to the upstream authors:
@@ -88,6 +153,6 @@ This repository is a vendored fork maintained by [WebDevBar](https://github.com/
 - **Fork improvements** — [vaska94](https://github.com/vaska94) · [vaska94/sshw](https://github.com/vaska94/sshw)
   (modernized deprecated APIs, custom terminal select widget, case-insensitive search, `copy-id` support, dependency cleanup)
 - **This fork** — [WebDevBar/sshw](https://github.com/WebDevBar/sshw) — tracks `vaska94/sshw` upstream; updates synced and reviewed manually.
-  WebDevBar enhancements: host-key verification (trust-on-first-use via `~/.ssh/known_hosts`, with `HostKeyAlgorithms` pinned to the trusted key type), global cross-folder search in the host picker, and case-insensitively sorted folders/hosts. These were developed with [Claude Code](https://claude.com/claude-code) (Anthropic).
+  WebDevBar enhancements: host-key verification (trust-on-first-use via `~/.ssh/known_hosts`, with `HostKeyAlgorithms` pinned to the trusted key type), global cross-folder search in the host picker, case-insensitively sorted folders/hosts, in-TUI host management (`^A`/`^E`/`^D`), master-password encryption (`enc:` format, argon2id + XChaCha20-Poly1305), FileZilla import/export, host-key fingerprint pinning, and a gated clipboard share (`^S`). These were developed with [Claude Code](https://claude.com/claude-code) (Anthropic).
 
 Licensed under the [MIT License](./LICENSE) © 2018–2026 yinheli (me@yinheli.com).
