@@ -329,9 +329,96 @@ func runShareToggle() {
 	}
 }
 
-// runExportFileZilla is a placeholder — implemented in Task 14.
+// deepCopyConfig returns a deep clone of the node tree via yaml round-trip.
+// Used by runExportFileZilla to decrypt a copy without touching the live tree.
+func deepCopyConfig(nodes []*sshw.Node) ([]*sshw.Node, error) {
+	b, err := sshw.MarshalNodes(nodes)
+	if err != nil {
+		return nil, err
+	}
+	return sshw.UnmarshalNodes(b)
+}
+
+// countLeaves returns the number of host leaf nodes in the tree.
+func countLeaves(nodes []*sshw.Node) int {
+	count := 0
+	for _, n := range nodes {
+		if n.Host != "" {
+			count++
+		}
+		count += countLeaves(n.Children)
+		count += countLeaves(n.Jump)
+	}
+	return count
+}
+
+// runExportFileZilla prompts for an output path, decrypts a deep copy of the
+// config (never the live tree), warns about plaintext, and writes sitemanager.xml.
 func runExportFileZilla() {
-	fmt.Fprintln(os.Stderr, "  Export to FileZilla: not yet implemented (Task 14).")
+	cfg := sshw.GetConfig()
+
+	// --- 1. Prompt for output path ---
+	fmt.Fprint(os.Stderr, "  Output path [sitemanager.xml]: ")
+	var outPath string
+	fmt.Fscan(os.Stdin, &outPath)
+	if outPath == "" {
+		outPath = "sitemanager.xml"
+	}
+	fmt.Fprintln(os.Stderr)
+
+	needDecrypt := (settings != nil && settings.MasterPassword.Enabled) || sshw.AnyEncrypted(cfg)
+
+	// --- 2. Decrypt a deep copy if needed ---
+	var exportNodes []*sshw.Node
+	if needDecrypt {
+		verifier := ""
+		if settings != nil {
+			verifier = settings.MasterPassword.Verifier
+		}
+		enabled := settings != nil && settings.MasterPassword.Enabled
+		pw, err := ensureMaster(cfg, verifier, enabled)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  master password error: %v\r\n", err)
+			return
+		}
+		cp, err := deepCopyConfig(cfg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  copy error: %v\r\n", err)
+			return
+		}
+		if err := sshw.DecryptAll(cp, pw); err != nil {
+			fmt.Fprintf(os.Stderr, "  decrypt error: %v\r\n", err)
+			return
+		}
+		exportNodes = cp
+	} else {
+		exportNodes = cfg
+	}
+
+	// --- 3. Plaintext-export warning + confirm ---
+	fmt.Fprintln(os.Stderr, "  \u26a0  WARNING: the exported file will contain passwords in PLAINTEXT.")
+	fmt.Fprint(os.Stderr, "  Continue? [y/N]: ")
+
+	b := make([]byte, 4)
+	n, _ := os.Stdin.Read(b)
+	fmt.Fprintln(os.Stderr)
+	if n == 0 || (b[0] != 'y' && b[0] != 'Y') {
+		fmt.Fprintln(os.Stderr, "  Export cancelled.")
+		return
+	}
+
+	// --- 4. Export and write ---
+	xmlData, err := sshw.ExportFileZilla(exportNodes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  export error: %v\r\n", err)
+		return
+	}
+	if err := os.WriteFile(outPath, xmlData, 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "  write error: %v\r\n", err)
+		return
+	}
+	count := countLeaves(exportNodes)
+	fmt.Fprintf(os.Stderr, "  Exported %d host(s) to %s\r\n", count, outPath)
 }
 
 // runImportFileZilla is a placeholder — implemented in Task 15.

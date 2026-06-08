@@ -265,6 +265,20 @@ func backupOnce(path string) {
 // NEW root that must be written back here before Save() (which reads `config`).
 func SetConfig(nodes []*Node) { config = nodes }
 
+// MarshalNodes serialises the node tree to YAML bytes (for deep-copy).
+func MarshalNodes(nodes []*Node) ([]byte, error) {
+	return yaml.Marshal(nodes)
+}
+
+// UnmarshalNodes deserialises YAML bytes back to a node tree (for deep-copy).
+func UnmarshalNodes(b []byte) ([]*Node, error) {
+	var nodes []*Node
+	if err := yaml.Unmarshal(b, &nodes); err != nil {
+		return nil, err
+	}
+	return nodes, nil
+}
+
 // expandHome expands a leading ~ in path to the user's home directory.
 func expandHome(path string) (string, error) {
 	if len(path) == 0 || path[0] != '~' {
