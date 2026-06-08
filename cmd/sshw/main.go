@@ -23,8 +23,26 @@ var (
 	settings *sshw.Settings
 )
 
-// runShare is a stub — implemented in Task 19.
-func runShare(n *sshw.Node) {}
+// runShare copies the node's host details (and safe ssh line) to the clipboard.
+// If the node's secrets are enc:-encoded, they are decrypted on a COPY of the
+// node so the shared config tree is never mutated.
+func runShare(n *sshw.Node) {
+	cp, err := decryptedClone(n)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  share: decrypt error: %v\n", err)
+		return
+	}
+	txt := sshw.ShareText(cp)
+	toolOK, _, copyErr := sshw.Copy(txt, func(s string) { fmt.Fprint(os.Stderr, s) })
+	if copyErr != nil {
+		fmt.Fprintf(os.Stderr, "  share: clipboard error: %v\n", copyErr)
+		return
+	}
+	if toolOK {
+		fmt.Fprint(os.Stderr, "  ✓ copied to clipboard\n")
+	}
+	fmt.Fprint(os.Stderr, "  ⚠ credentials copied to clipboard\n")
+}
 
 func findAlias(nodes []*sshw.Node, nodeAlias string) *sshw.Node {
 	for _, node := range nodes {
