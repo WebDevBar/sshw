@@ -81,11 +81,14 @@ func formatInactive(e entry) string {
 	return s
 }
 
-func selectNode(label string, items []*sshw.Node, leaves []leaf, size int) (*sshw.Node, error) {
+// shareEnabled gates the ^S share key in the footer (set by options in Task 16).
+var shareEnabled bool
+
+func selectNode(label string, items []*sshw.Node, leaves []leaf, size int, levelPath string) (*sshw.Node, string, string, error) {
 	fd := int(os.Stdin.Fd())
 	oldState, err := term.MakeRaw(fd)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 	defer term.Restore(fd, oldState)
 
@@ -96,6 +99,24 @@ func selectNode(label string, items []*sshw.Node, leaves []leaf, size int) (*ssh
 	search := ""
 	entries := viewEntries(search, items, leaves)
 	renderedLines := 0
+
+	// cur returns the node at the cursor, or nil when the list is empty.
+	cur := func() *sshw.Node {
+		if len(entries) == 0 {
+			return nil
+		}
+		return entries[cursor].node
+	}
+
+	// curPath returns the folder path for the currently highlighted entry.
+	// For global-search rows the path is stored on the entry; for level rows
+	// we use the levelPath arg (the breadcrumb of the current level).
+	curPath := func() string {
+		if search != "" && len(entries) > 0 {
+			return entries[cursor].path
+		}
+		return levelPath
+	}
 
 	render := func() {
 		for i := 0; i < renderedLines; i++ {
@@ -135,6 +156,14 @@ func selectNode(label string, items []*sshw.Node, leaves []leaf, size int) (*ssh
 			buf.WriteString("\r\n")
 			lines++
 		}
+		// Dynamic footer
+		footer := "^A add  ^E edit  ^D delete  ^O options"
+		if shareEnabled {
+			footer += "  ^S share"
+		}
+		footer += "  ^C quit"
+		buf.WriteString(ansiClearLine + ansiFaint + footer + ansiReset + "\r\n")
+		lines++
 		fmt.Fprint(os.Stderr, buf.String())
 		renderedLines = lines
 	}
@@ -145,19 +174,34 @@ func selectNode(label string, items []*sshw.Node, leaves []leaf, size int) (*ssh
 	for {
 		n, err := os.Stdin.Read(buf)
 		if err != nil {
-			return nil, err
+			return nil, "", "", err
 		}
 		b := buf[:n]
 		switch {
-		case n == 1 && b[0] == 3: // Ctrl+C
+		case n == 1 && b[0] == 3: // ^C quit
 			clearScreen(renderedLines)
-			return nil, nil
-		case n == 1 && b[0] == 13: // Enter
+			return nil, "", "quit", nil
+		case n == 1 && b[0] == 13: // Enter -> connect
 			if len(entries) == 0 {
 				continue
 			}
 			clearScreen(renderedLines)
-			return entries[cursor].node, nil
+			return cur(), curPath(), "connect", nil
+		case n == 1 && b[0] == 1: // ^A add
+			clearScreen(renderedLines)
+			return cur(), curPath(), "add", nil
+		case n == 1 && b[0] == 5: // ^E edit
+			clearScreen(renderedLines)
+			return cur(), curPath(), "edit", nil
+		case n == 1 && b[0] == 4: // ^D delete
+			clearScreen(renderedLines)
+			return cur(), curPath(), "delete", nil
+		case n == 1 && b[0] == 15: // ^O options
+			clearScreen(renderedLines)
+			return cur(), curPath(), "options", nil
+		case n == 1 && b[0] == 19 && shareEnabled: // ^S share (gated)
+			clearScreen(renderedLines)
+			return cur(), curPath(), "share", nil
 		case n == 1 && b[0] == 127: // Backspace
 			if len(search) > 0 {
 				search = search[:len(search)-1]
@@ -166,14 +210,14 @@ func selectNode(label string, items []*sshw.Node, leaves []leaf, size int) (*ssh
 			} else if len(items) > 0 && items[0].Name == prev {
 				// empty query while inside a folder -> go up one level
 				clearScreen(renderedLines)
-				return items[0], nil
+				return items[0], levelPath, "nav", nil
 			}
 		case n == 1 && b[0] == 27: // Escape
 			clearScreen(renderedLines)
 			if len(items) > 0 && items[0].Name == prev {
-				return items[0], nil // inside a folder -> up one level
+				return items[0], levelPath, "nav", nil // inside a folder -> up one level
 			}
-			return nil, nil // at root -> quit
+			return nil, "", "nav", nil // at root -> quit
 		case n == 3 && b[0] == 27 && b[1] == 91 && b[2] == 65: // Up
 			if cursor > 0 {
 				cursor--

@@ -22,6 +22,9 @@ var (
 	log = sshw.GetLogger()
 )
 
+// runShare is a stub — implemented in Task 19.
+func runShare(n *sshw.Node) {}
+
 func findAlias(nodes []*sshw.Node, nodeAlias string) *sshw.Node {
 	for _, node := range nodes {
 		if node.Alias == nodeAlias {
@@ -81,7 +84,7 @@ func main() {
 	}
 
 	leaves := flattenLeaves(sshw.GetConfig(), "")
-	node := choose(nil, sshw.GetConfig(), leaves)
+	node := choose(nil, sshw.GetConfig(), leaves, "")
 	if node == nil {
 		return
 	}
@@ -117,24 +120,133 @@ func main() {
 	client.Login()
 }
 
-func choose(parent, trees []*sshw.Node, leaves []leaf) *sshw.Node {
-	node, err := selectNode("select host", trees, leaves, 20)
-	if err != nil || node == nil {
-		return nil
-	}
-	if len(node.Children) > 0 {
-		first := node.Children[0]
-		if first.Name != prev {
-			first = &sshw.Node{Name: prev}
-			node.Children = append(node.Children[:0], append([]*sshw.Node{first}, node.Children...)...)
+// choose drives the picker loop. parent is the level to return to on Esc/up,
+// trees is the current level's nodes, leaves is the global search index, and
+// levelPath is the "/"-joined breadcrumb for the current level.
+// Returns the selected connectable node, or nil to quit.
+func choose(parent, trees []*sshw.Node, leaves []leaf, levelPath string) *sshw.Node {
+	for {
+		node, path, action, err := selectNode("select host", trees, leaves, 20, levelPath)
+		if err != nil {
+			return nil
 		}
-		return choose(trees, node.Children, leaves)
-	}
-	if node.Name == prev {
-		if parent == nil {
-			return choose(nil, sshw.GetConfig(), leaves)
+
+		switch action {
+		case "quit":
+			return nil
+
+		case "nav":
+			// Esc or Backspace while in a folder — go up one level.
+			if node != nil && node.Name == prev {
+				if parent == nil {
+					return choose(nil, sshw.GetConfig(), flattenLeaves(sshw.GetConfig(), ""), "")
+				}
+				return choose(nil, parent, flattenLeaves(sshw.GetConfig(), ""), "")
+			}
+			// Esc at root -> quit
+			return nil
+
+		case "connect":
+			if node == nil {
+				continue
+			}
+			// Drill into folder
+			if len(node.Children) > 0 {
+				first := node.Children[0]
+				if first.Name != prev {
+					first = &sshw.Node{Name: prev}
+					node.Children = append(node.Children[:0], append([]*sshw.Node{first}, node.Children...)...)
+				}
+				childPath := node.Name
+				if levelPath != "" {
+					childPath = levelPath + "/" + node.Name
+				}
+				result := choose(trees, node.Children, leaves, childPath)
+				if result != nil {
+					return result
+				}
+				// Returned nil from sub-level (quit) — propagate
+				return nil
+			}
+			// It's a -parent- sentinel -> go up
+			if node.Name == prev {
+				if parent == nil {
+					return choose(nil, sshw.GetConfig(), flattenLeaves(sshw.GetConfig(), ""), "")
+				}
+				return choose(nil, parent, flattenLeaves(sshw.GetConfig(), ""), "")
+			}
+			return node
+
+		case "add":
+			f := newFormModel(nil, path)
+			if runForm(f) {
+				n, folder, ferr := f.toNode()
+				if ferr == nil {
+					root := sshw.InsertNode(sshw.GetConfig(), folder, n)
+					sshw.SetConfig(root)
+					_ = sshw.Save()
+				}
+			}
+			// Refresh and re-enter picker
+			trees = sshw.GetConfig()
+			leaves = flattenLeaves(sshw.GetConfig(), "")
+
+		case "edit":
+			// No-op on folder rows or empty list
+			if node == nil || node.Name == prev || len(node.Children) > 0 {
+				continue
+			}
+			f := newFormModel(node, path)
+			if runForm(f) {
+				n, folder, ferr := f.toNode()
+				if ferr == nil {
+					root := sshw.GetConfig()
+					// Remove old node from its original path
+					root, _ = sshw.DeleteNode(root, f.origPath, node.Name)
+					// Insert updated node at (possibly new) folder
+					root = sshw.InsertNode(root, folder, n)
+					sshw.SetConfig(root)
+					_ = sshw.Save()
+				}
+			}
+			trees = sshw.GetConfig()
+			leaves = flattenLeaves(sshw.GetConfig(), "")
+
+		case "delete":
+			if node == nil || node.Name == prev {
+				continue
+			}
+			// Inline confirm prompt
+			if confirmDelete(node) {
+				root, _ := sshw.DeleteNode(sshw.GetConfig(), path, node.Name)
+				sshw.SetConfig(root)
+				_ = sshw.Save()
+			}
+			trees = sshw.GetConfig()
+			leaves = flattenLeaves(sshw.GetConfig(), "")
+
+		case "options":
+			runOptions()
+			trees = sshw.GetConfig()
+			leaves = flattenLeaves(sshw.GetConfig(), "")
+
+		case "share":
+			if node != nil && node.Host != "" {
+				runShare(node)
+			}
 		}
-		return choose(nil, parent, leaves)
 	}
-	return node
+}
+
+// confirmDelete renders a [y/N] prompt and returns true if the user presses y or Y.
+func confirmDelete(node *sshw.Node) bool {
+	user := node.User
+	if user == "" {
+		user = "root"
+	}
+	fmt.Fprintf(os.Stderr, "  Delete %q (%s@%s)? [y/N] ", node.Name, user, node.Host)
+	buf := make([]byte, 1)
+	n, _ := os.Stdin.Read(buf)
+	fmt.Fprintln(os.Stderr)
+	return n == 1 && (buf[0] == 'y' || buf[0] == 'Y')
 }
