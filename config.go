@@ -15,23 +15,24 @@ import (
 )
 
 type Node struct {
-	Name           string           `yaml:"name"`
-	Alias          string           `yaml:"alias"`
-	Host           string           `yaml:"host"`
-	User           string           `yaml:"user"`
-	Port           int              `yaml:"port"`
-	KeyPath        string           `yaml:"keypath"`
-	AgentPath      string           `yaml:"agentpath"`
-	Passphrase     string           `yaml:"passphrase"`
-	Password       string           `yaml:"password"`
-	CallbackShells []*CallbackShell `yaml:"callback-shells"`
-	Children       []*Node          `yaml:"children"`
-	Jump           []*Node          `yaml:"jump"`
+	Name           string           `yaml:"name,omitempty"`
+	Alias          string           `yaml:"alias,omitempty"`
+	Host           string           `yaml:"host,omitempty"`
+	User           string           `yaml:"user,omitempty"`
+	Port           int              `yaml:"port,omitempty"`
+	KeyPath        string           `yaml:"keypath,omitempty"`
+	AgentPath      string           `yaml:"agentpath,omitempty"`
+	Passphrase     string           `yaml:"passphrase,omitempty"`
+	Password       string           `yaml:"password,omitempty"`
+	Fingerprint    string           `yaml:"fingerprint,omitempty"`
+	CallbackShells []*CallbackShell `yaml:"callback-shells,omitempty"`
+	Children       []*Node          `yaml:"children,omitempty"`
+	Jump           []*Node          `yaml:"jump,omitempty"`
 }
 
 type CallbackShell struct {
-	Cmd   string        `yaml:"cmd"`
-	Delay time.Duration `yaml:"delay"`
+	Cmd   string        `yaml:"cmd,omitempty"`
+	Delay time.Duration `yaml:"delay,omitempty"`
 }
 
 func (n *Node) String() string {
