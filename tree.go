@@ -18,7 +18,7 @@ func ensureFolder(nodes []*Node, parts []string) ([]*Node, func([]*Node) []*Node
 	}
 	head := parts[0]
 	for _, n := range nodes {
-		if n.Name == head && (len(n.Children) > 0 || len(parts) > 0) && n.Host == "" {
+		if n.Name == head && n.Host == "" {
 			inner, setInner := ensureFolder(n.Children, parts[1:])
 			return inner, func(x []*Node) []*Node {
 				n.Children = setInner(x)

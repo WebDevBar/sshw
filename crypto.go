@@ -29,6 +29,12 @@ func deriveKey(password string, salt []byte) []byte {
 	return argon2.IDKey([]byte(password), salt, argonTime, argonMem, argonPar, keyLen)
 }
 
+// deriveKeyP derives a key using explicit argon2id parameters (used by DecryptValue
+// to honour the params embedded in the enc: string rather than the package constants).
+func deriveKeyP(password string, salt []byte, m, t uint32, p uint8) []byte {
+	return argon2.IDKey([]byte(password), salt, t, m, p, keyLen)
+}
+
 type Crypter struct {
 	salt []byte
 	key  []byte
@@ -58,18 +64,25 @@ func IsEnc(s string) bool { return strings.HasPrefix(s, "enc:v1:argon2id:") }
 
 // SaltOf returns the salt embedded in an enc: string (for reusing the config salt).
 func SaltOf(enc string) ([]byte, error) {
-	_, salt, _, _, err := parseEnc(enc)
+	_, salt, _, _, _, _, _, err := parseEnc(enc)
 	return salt, err
 }
 
-func parseEnc(enc string) (params string, salt, nonce, ct []byte, err error) {
+func parseEnc(enc string) (params string, salt, nonce, ct []byte, m, t uint32, p uint8, err error) {
 	if !IsEnc(enc) {
-		return "", nil, nil, nil, fmt.Errorf("not an enc: value")
+		return "", nil, nil, nil, 0, 0, 0, fmt.Errorf("not an enc: value")
 	}
 	rest := strings.TrimPrefix(enc, encPrefix)
 	parts := strings.Split(rest, ":")
 	if len(parts) != 4 {
-		return "", nil, nil, nil, fmt.Errorf("malformed enc: value")
+		return "", nil, nil, nil, 0, 0, 0, fmt.Errorf("malformed enc: value")
+	}
+	// Parse m=<>,t=<>,p=<> from parts[0]; fall back to package constants on parse error.
+	var pm, pt uint32
+	var pp uint8
+	_, scanErr := fmt.Sscanf(parts[0], "m=%d,t=%d,p=%d", &pm, &pt, &pp)
+	if scanErr != nil {
+		pm, pt, pp = argonMem, argonTime, argonPar
 	}
 	dec := base64.RawStdEncoding.DecodeString
 	if salt, err = dec(parts[1]); err != nil {
@@ -81,16 +94,18 @@ func parseEnc(enc string) (params string, salt, nonce, ct []byte, err error) {
 	if ct, err = dec(parts[3]); err != nil {
 		return
 	}
-	return parts[0], salt, nonce, ct, nil
+	return parts[0], salt, nonce, ct, pm, pt, pp, nil
 }
 
 // DecryptValue decrypts a self-describing enc: string with only the password.
+// It uses the argon2id parameters embedded in the enc: string (m, t, p) so that
+// values encrypted with non-default parameters are still decryptable.
 func DecryptValue(password, enc string) (string, error) {
-	_, salt, nonce, ct, err := parseEnc(enc)
+	_, salt, nonce, ct, m, t, p, err := parseEnc(enc)
 	if err != nil {
 		return "", err
 	}
-	key := deriveKey(password, salt)
+	key := deriveKeyP(password, salt, m, t, p)
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
 		return "", err

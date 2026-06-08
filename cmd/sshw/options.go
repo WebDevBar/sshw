@@ -352,8 +352,8 @@ func countLeaves(nodes []*sshw.Node) int {
 	return count
 }
 
-// runExportFileZilla prompts for an output path, decrypts a deep copy of the
-// config (never the live tree), warns about plaintext, and writes sitemanager.xml.
+// runExportFileZilla prompts for an output path, warns about plaintext and
+// confirms before decrypting (never the live tree), then writes sitemanager.xml.
 func runExportFileZilla() {
 	cfg := sshw.GetConfig()
 
@@ -366,9 +366,21 @@ func runExportFileZilla() {
 	}
 	fmt.Fprintln(os.Stderr)
 
+	// --- 2. Plaintext-export warning + confirm (BEFORE any decrypt/master-password prompt) ---
+	fmt.Fprintln(os.Stderr, "  \u26a0  WARNING: the exported file will contain passwords in PLAINTEXT.")
+	fmt.Fprint(os.Stderr, "  Continue? [y/N]: ")
+
+	b := make([]byte, 4)
+	n, _ := os.Stdin.Read(b)
+	fmt.Fprintln(os.Stderr)
+	if n == 0 || (b[0] != 'y' && b[0] != 'Y') {
+		fmt.Fprintln(os.Stderr, "  Export cancelled.")
+		return
+	}
+
 	needDecrypt := (settings != nil && settings.MasterPassword.Enabled) || sshw.AnyEncrypted(cfg)
 
-	// --- 2. Decrypt a deep copy if needed ---
+	// --- 3. Decrypt a deep copy if needed ---
 	var exportNodes []*sshw.Node
 	if needDecrypt {
 		verifier := ""
@@ -393,18 +405,6 @@ func runExportFileZilla() {
 		exportNodes = cp
 	} else {
 		exportNodes = cfg
-	}
-
-	// --- 3. Plaintext-export warning + confirm ---
-	fmt.Fprintln(os.Stderr, "  \u26a0  WARNING: the exported file will contain passwords in PLAINTEXT.")
-	fmt.Fprint(os.Stderr, "  Continue? [y/N]: ")
-
-	b := make([]byte, 4)
-	n, _ := os.Stdin.Read(b)
-	fmt.Fprintln(os.Stderr)
-	if n == 0 || (b[0] != 'y' && b[0] != 'Y') {
-		fmt.Fprintln(os.Stderr, "  Export cancelled.")
-		return
 	}
 
 	// --- 4. Export and write ---

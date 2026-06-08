@@ -91,9 +91,10 @@ func main() {
 	}
 
 	settings, _ = sshw.LoadSettings()
-	if settings != nil {
-		shareEnabled = settings.Share.Enabled
+	if settings == nil {
+		settings = &sshw.Settings{}
 	}
+	shareEnabled = settings.Share.Enabled
 
 	// login by alias
 	if len(os.Args) > 1 {
@@ -225,7 +226,11 @@ func choose(parent, trees []*sshw.Node, leaves []leaf, levelPath string) *sshw.N
 						root := sshw.InsertNode(sshw.GetConfig(), folder, n)
 						sshw.SetConfig(root)
 						_ = sshw.Save()
+					} else {
+						log.Error("encrypt failed; host not saved:", eerr)
 					}
+				} else {
+					log.Error("invalid host entry; host not saved:", ferr)
 				}
 			}
 			// Refresh and re-enter picker
@@ -249,7 +254,11 @@ func choose(parent, trees []*sshw.Node, leaves []leaf, levelPath string) *sshw.N
 						root = sshw.InsertNode(root, folder, n)
 						sshw.SetConfig(root)
 						_ = sshw.Save()
+					} else {
+						log.Error("encrypt failed; host not saved:", eerr)
 					}
+				} else {
+					log.Error("invalid host entry; host not saved:", ferr)
 				}
 			}
 			trees = sshw.GetConfig()
