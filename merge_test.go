@@ -10,8 +10,8 @@ func TestMergeAddUpdateNeverDelete(t *testing.T) {
 		{Name: "lonely", Host: "x"}, // absent from import -> must survive
 	}
 	imported := []importedHost{
-		{Path: "grp", Name: "db", Host: "new", User: "admin", Port: 22},  // update (mapped fields only)
-		{Path: "grp", Name: "extra", Host: "e", User: "u", Port: 22},     // add
+		{Path: "grp", Name: "db", Host: "new", User: "admin", Port: 22}, // update (mapped fields only)
+		{Path: "grp", Name: "extra", Host: "e", User: "u", Port: 22},    // add
 	}
 	res := MergeImported(&existing, imported)
 	db := FindLeaf(existing, "grp", "db")
