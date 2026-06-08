@@ -73,6 +73,9 @@ func main() {
 	}
 
 	settings, _ = sshw.LoadSettings()
+	if settings != nil {
+		shareEnabled = settings.Share.Enabled
+	}
 
 	// login by alias
 	if len(os.Args) > 1 {
@@ -200,9 +203,11 @@ func choose(parent, trees []*sshw.Node, leaves []leaf, levelPath string) *sshw.N
 			if runForm(f) {
 				n, folder, ferr := f.toNode()
 				if ferr == nil {
-					root := sshw.InsertNode(sshw.GetConfig(), folder, n)
-					sshw.SetConfig(root)
-					_ = sshw.Save()
+					if eerr := encryptIfEnabled(n); eerr == nil {
+						root := sshw.InsertNode(sshw.GetConfig(), folder, n)
+						sshw.SetConfig(root)
+						_ = sshw.Save()
+					}
 				}
 			}
 			// Refresh and re-enter picker
@@ -218,13 +223,15 @@ func choose(parent, trees []*sshw.Node, leaves []leaf, levelPath string) *sshw.N
 			if runForm(f) {
 				n, folder, ferr := f.toNode()
 				if ferr == nil {
-					root := sshw.GetConfig()
-					// Remove old node from its original path
-					root, _ = sshw.DeleteNode(root, f.origPath, node.Name)
-					// Insert updated node at (possibly new) folder
-					root = sshw.InsertNode(root, folder, n)
-					sshw.SetConfig(root)
-					_ = sshw.Save()
+					if eerr := encryptIfEnabled(n); eerr == nil {
+						root := sshw.GetConfig()
+						// Remove old node from its original path
+						root, _ = sshw.DeleteNode(root, f.origPath, node.Name)
+						// Insert updated node at (possibly new) folder
+						root = sshw.InsertNode(root, folder, n)
+						sshw.SetConfig(root)
+						_ = sshw.Save()
+					}
 				}
 			}
 			trees = sshw.GetConfig()
@@ -267,6 +274,20 @@ func confirmDelete(node *sshw.Node) bool {
 	n, _ := os.Stdin.Read(buf)
 	fmt.Fprintln(os.Stderr)
 	return n == 1 && (buf[0] == 'y' || buf[0] == 'Y')
+}
+
+// encryptIfEnabled encrypts the secrets on n in-place when master password is
+// enabled. Called after f.toNode() in add and edit handlers (Task 12 Step 4).
+func encryptIfEnabled(n *sshw.Node) error {
+	if settings == nil || !settings.MasterPassword.Enabled {
+		return nil
+	}
+	pw, err := ensureMaster(sshw.GetConfig(), settings.MasterPassword.Verifier, true)
+	if err != nil {
+		return err
+	}
+	salt := sshw.OperativeSalt(sshw.GetConfig(), settings.MasterPassword.Verifier)
+	return sshw.EncryptAll([]*sshw.Node{n}, pw, salt)
 }
 
 // decryptedClone returns a connect-ready CLONE of node with its (and its used jump
