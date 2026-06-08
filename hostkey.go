@@ -19,6 +19,7 @@ import (
 //   - known and matches  -> accept
 //   - host not yet known  -> record the key to known_hosts, then accept (TOFU)
 //   - known but CHANGED   -> refuse (possible man-in-the-middle)
+//
 // It fails closed (refuses) if known_hosts cannot be set up, rather than
 // blindly trusting like ssh.InsecureIgnoreHostKey did.
 func knownHostsCallback() ssh.HostKeyCallback {
@@ -103,6 +104,16 @@ func knownHostsAlgorithms(hostport string) []string {
 		}
 	}
 	return algos
+}
+
+// pinnedCallback verifies the presented key against a pinned SHA256 fingerprint.
+func pinnedCallback(fingerprint string) ssh.HostKeyCallback {
+	return func(_ string, _ net.Addr, key ssh.PublicKey) error {
+		if ssh.FingerprintSHA256(key) == fingerprint {
+			return nil
+		}
+		return fmt.Errorf("host key fingerprint mismatch: server key does not match the pinned fingerprint -- refusing to connect")
+	}
 }
 
 func failClosed(string, net.Addr, ssh.PublicKey) error {
