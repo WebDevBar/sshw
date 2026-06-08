@@ -163,7 +163,17 @@ func selectNode(label string, items []*sshw.Node, leaves []leaf, size int) (*ssh
 				search = search[:len(search)-1]
 				entries = viewEntries(search, items, leaves)
 				cursor = 0
+			} else if len(items) > 0 && items[0].Name == prev {
+				// empty query while inside a folder -> go up one level
+				clearScreen(renderedLines)
+				return items[0], nil
 			}
+		case n == 1 && b[0] == 27: // Escape
+			clearScreen(renderedLines)
+			if len(items) > 0 && items[0].Name == prev {
+				return items[0], nil // inside a folder -> up one level
+			}
+			return nil, nil // at root -> quit
 		case n == 3 && b[0] == 27 && b[1] == 91 && b[2] == 65: // Up
 			if cursor > 0 {
 				cursor--
