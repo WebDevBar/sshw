@@ -19,7 +19,8 @@ var (
 	S      = flag.Bool("s", false, "use local ssh config '~/.ssh/config'")
 	CopyID = flag.Bool("copy-id", false, "copy SSH public key to selected host")
 
-	log = sshw.GetLogger()
+	log      = sshw.GetLogger()
+	settings *sshw.Settings
 )
 
 // runShare is a stub — implemented in Task 19.
@@ -71,13 +72,20 @@ func main() {
 		}
 	}
 
+	settings, _ = sshw.LoadSettings()
+
 	// login by alias
 	if len(os.Args) > 1 {
 		var nodeAlias = os.Args[1]
 		var nodes = sshw.GetConfig()
 		var node = findAlias(nodes, nodeAlias)
 		if node != nil {
-			client := sshw.NewClient(node)
+			dn, err := decryptedClone(node)
+			if err != nil {
+				log.Error("decrypt:", err)
+				os.Exit(1)
+			}
+			client := sshw.NewClient(dn)
 			client.Login()
 			return
 		}
@@ -103,7 +111,12 @@ func main() {
 				os.Exit(1)
 			}
 		}
-		client := sshw.NewClient(node)
+		dn, err := decryptedClone(node)
+		if err != nil {
+			log.Error("decrypt:", err)
+			os.Exit(1)
+		}
+		client := sshw.NewClient(dn)
 		if err := client.CopyID(pubKey); err != nil {
 			log.Error("copy-id failed:", err)
 			os.Exit(1)
@@ -116,7 +129,12 @@ func main() {
 		return
 	}
 
-	client := sshw.NewClient(node)
+	dn, err := decryptedClone(node)
+	if err != nil {
+		log.Error("decrypt:", err)
+		os.Exit(1)
+	}
+	client := sshw.NewClient(dn)
 	client.Login()
 }
 
@@ -249,4 +267,35 @@ func confirmDelete(node *sshw.Node) bool {
 	n, _ := os.Stdin.Read(buf)
 	fmt.Fprintln(os.Stderr)
 	return n == 1 && (buf[0] == 'y' || buf[0] == 'Y')
+}
+
+// decryptedClone returns a connect-ready CLONE of node with its (and its used jump
+// hop's) secrets decrypted. Never mutates the shared config tree.
+func decryptedClone(node *sshw.Node) (*sshw.Node, error) {
+	cp := *node
+	if len(node.Jump) > 0 {
+		cp.Jump = make([]*sshw.Node, len(node.Jump))
+		for i, j := range node.Jump {
+			jc := *j
+			cp.Jump[i] = &jc
+		}
+	}
+	enc := sshw.IsEnc(cp.Password) || sshw.IsEnc(cp.Passphrase) ||
+		(len(cp.Jump) > 0 && (sshw.IsEnc(cp.Jump[0].Password) || sshw.IsEnc(cp.Jump[0].Passphrase)))
+	if !enc {
+		return &cp, nil
+	}
+	pw, err := ensureMaster(sshw.GetConfig(), settings.MasterPassword.Verifier, settings.MasterPassword.Enabled)
+	if err != nil {
+		return nil, err
+	}
+	if err := sshw.DecryptNode(&cp, pw); err != nil {
+		return nil, err
+	}
+	if len(cp.Jump) > 0 {
+		if err := sshw.DecryptNode(cp.Jump[0], pw); err != nil {
+			return nil, err
+		}
+	}
+	return &cp, nil
 }
