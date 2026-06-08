@@ -423,5 +423,48 @@ func runExportFileZilla() {
 
 // runImportFileZilla is a placeholder — implemented in Task 15.
 func runImportFileZilla() {
-	fmt.Fprintln(os.Stderr, "  Import from FileZilla: not yet implemented (Task 15).")
+	fmt.Fprint(os.Stderr, "  Path to sitemanager.xml [sitemanager.xml]: ")
+	var inPath string
+	fmt.Fscan(os.Stdin, &inPath)
+	if inPath == "" {
+		inPath = "sitemanager.xml"
+	}
+	fmt.Fprintln(os.Stderr)
+
+	b, err := os.ReadFile(inPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  read error: %v\r\n", err)
+		return
+	}
+
+	hosts, err := sshw.ParseFileZilla(b)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  parse error: %v\r\n", err)
+		return
+	}
+
+	cfg := sshw.GetConfig()
+	res := sshw.MergeImported(&cfg, hosts)
+
+	if settings != nil && settings.MasterPassword.Enabled {
+		verifier := settings.MasterPassword.Verifier
+		pw, merr := ensureMaster(cfg, verifier, true)
+		if merr != nil {
+			fmt.Fprintf(os.Stderr, "  master password error: %v\r\n", merr)
+			return
+		}
+		salt := sshw.OperativeSalt(cfg, verifier)
+		if eerr := sshw.EncryptAll(cfg, pw, salt); eerr != nil {
+			fmt.Fprintf(os.Stderr, "  encrypt error: %v\r\n", eerr)
+			return
+		}
+	}
+
+	sshw.SetConfig(cfg)
+	if serr := sshw.Save(); serr != nil {
+		fmt.Fprintf(os.Stderr, "  save error: %v\r\n", serr)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "  Import done: %d added, %d updated, %d skipped (FTP).\r\n",
+		res.Added, res.Updated, res.Skipped)
 }

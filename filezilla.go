@@ -28,15 +28,15 @@ type fzServer struct {
 type fzFolder struct {
 	XMLName xml.Name   `xml:"Folder"`
 	Name    string     `xml:"Name,attr"`
-	Servers []fzServer `xml:",omitempty"`
-	Folders []fzFolder `xml:",omitempty"`
+	Servers []fzServer `xml:"Server"`
+	Folders []fzFolder `xml:"Folder"`
 }
 
 // fzServers is the <Servers> container.
 type fzServers struct {
 	XMLName xml.Name   `xml:"Servers"`
-	Servers []fzServer `xml:",omitempty"`
-	Folders []fzFolder `xml:",omitempty"`
+	Servers []fzServer `xml:"Server"`
+	Folders []fzFolder `xml:"Folder"`
 }
 
 // fzRoot is the top-level <FileZilla3> element.
@@ -111,4 +111,55 @@ func nodeToServer(n *Node) fzServer {
 		s.Pass = &fzPass{Encoding: "base64", Value: enc}
 	}
 	return s
+}
+
+// ParseFileZilla reads a FileZilla sitemanager.xml and returns a slice of
+// importedHost values. Folders are walked recursively to build folder Path
+// strings (slash-joined). Passwords are base64-decoded. Entries with
+// Protocol=0 (plain FTP) are included but flagged with FTP=true so that
+// callers (e.g. MergeImported) can skip them.
+func ParseFileZilla(data []byte) ([]importedHost, error) {
+	var root fzRoot
+	if err := xml.Unmarshal(data, &root); err != nil {
+		return nil, err
+	}
+	var hosts []importedHost
+	collectServers(root.Servers.Servers, "", &hosts)
+	collectFolders(root.Servers.Folders, "", &hosts)
+	return hosts, nil
+}
+
+func collectServers(servers []fzServer, path string, out *[]importedHost) {
+	for _, s := range servers {
+		h := importedHost{
+			Path: path,
+			Name: s.Name,
+			Host: s.Host,
+			Port: s.Port,
+			User: s.User,
+			FTP:  s.Protocol == 0,
+		}
+		if s.Pass != nil && s.Pass.Encoding == "base64" && s.Pass.Value != "" {
+			if decoded, err := base64.StdEncoding.DecodeString(s.Pass.Value); err == nil {
+				h.Password = string(decoded)
+			}
+		}
+		if s.Keyfile != "" {
+			h.KeyPath = s.Keyfile
+		}
+		*out = append(*out, h)
+	}
+}
+
+func collectFolders(folders []fzFolder, parentPath string, out *[]importedHost) {
+	for _, f := range folders {
+		var path string
+		if parentPath == "" {
+			path = f.Name
+		} else {
+			path = parentPath + "/" + f.Name
+		}
+		collectServers(f.Servers, path, out)
+		collectFolders(f.Folders, path, out)
+	}
 }
