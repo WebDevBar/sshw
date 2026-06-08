@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kevinburke/ssh_config"
@@ -53,8 +54,14 @@ func (n *Node) port() int {
 	return n.Port
 }
 
+const parentName = "-parent-"
+
 var (
-	config []*Node
+	config     []*Node
+	loadedPath string
+
+	backupDone = map[string]bool{}
+	backupMu   sync.Mutex
 )
 
 func GetConfig() []*Node {
@@ -62,20 +69,43 @@ func GetConfig() []*Node {
 }
 
 func LoadConfig() error {
-	b, err := LoadConfigBytes(".sshw", ".sshw.yml", ".sshw.yaml")
+	b, path, err := loadConfigBytesPath(".sshw", ".sshw.yml", ".sshw.yaml")
 	if err != nil {
+		if os.IsNotExist(err) {
+			config = nil
+			loadedPath = ""
+			return nil // fresh machine: empty config, reachable UI
+		}
 		return err
 	}
 	var c []*Node
-	err = yaml.Unmarshal(b, &c)
-	if err != nil {
+	if err := yaml.Unmarshal(b, &c); err != nil {
 		return err
 	}
-
 	sortNodes(c)
 	config = c
-
+	loadedPath = path
 	return nil
+}
+
+// loadConfigBytesPath is LoadConfigBytes but also returns the path it read.
+func loadConfigBytesPath(names ...string) ([]byte, string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return nil, "", err
+	}
+	var lastErr error
+	for _, base := range []string{u.HomeDir, "."} {
+		for _, name := range names {
+			p := filepath.Join(base, name)
+			b, err := os.ReadFile(p)
+			if err == nil {
+				return b, p, nil
+			}
+			lastErr = err
+		}
+	}
+	return nil, "", lastErr
 }
 
 // sortNodes orders each level (folders and hosts together) by name,
@@ -158,6 +188,82 @@ func LoadConfigBytes(names ...string) ([]byte, error) {
 	}
 	return nil, lastErr
 }
+
+// Save writes the in-memory config back to the file it was loaded from
+// (loadedPath), or ~/.sshw.yml if none was loaded. Atomic; strips synthetic
+// "-parent-" nodes; writes a one-time .bak before the first save of a run.
+func Save() error {
+	path := loadedPath
+	if path == "" {
+		u, err := user.Current()
+		if err != nil {
+			return err
+		}
+		path = filepath.Join(u.HomeDir, ".sshw.yml")
+		loadedPath = path
+	}
+	out, err := yaml.Marshal(stripParents(config))
+	if err != nil {
+		return err
+	}
+	backupOnce(path)
+	return atomicWrite(path, out)
+}
+
+func stripParents(nodes []*Node) []*Node {
+	out := make([]*Node, 0, len(nodes))
+	for _, n := range nodes {
+		if n == nil || n.Name == parentName {
+			continue
+		}
+		cp := *n
+		cp.Children = stripParents(n.Children)
+		out = append(out, &cp)
+	}
+	return out
+}
+
+func atomicWrite(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".sshw-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op if rename succeeded
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
+}
+
+func backupOnce(path string) {
+	backupMu.Lock()
+	defer backupMu.Unlock()
+	if backupDone[path] {
+		return
+	}
+	backupDone[path] = true
+	if b, err := os.ReadFile(path); err == nil {
+		_ = os.WriteFile(path+".bak", b, 0600)
+	}
+}
+
+// SetConfig replaces the package's root node slice. Required because GetConfig()
+// returns a slice value — root-level insert/delete/import in cmd/sshw produce a
+// NEW root that must be written back here before Save() (which reads `config`).
+func SetConfig(nodes []*Node) { config = nodes }
 
 // expandHome expands a leading ~ in path to the user's home directory.
 func expandHome(path string) (string, error) {
