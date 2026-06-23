@@ -98,3 +98,48 @@ func TestParseFileZilla(t *testing.T) {
 		t.Error("FTP host (Protocol=0) should be flagged as FTP")
 	}
 }
+
+
+func TestParseFileZillaRealFolders(t *testing.T) {
+	// Real FileZilla format: the folder name is the element's text content
+	// (chardata), NOT a Name="" attribute. Nested folders build slash paths.
+	raw := `<?xml version="1.0"?>
+<FileZilla3>
+  <Servers>
+    <Folder expanded="1">00_WDB
+      <Server>
+        <Name>siteA</Name>
+        <Host>10.0.0.1</Host>
+        <Port>22</Port>
+        <Protocol>1</Protocol>
+        <Logontype>1</Logontype>
+        <User>roota</User>
+      </Server>
+      <Folder expanded="1">98_LEGACY
+        <Server>
+          <Name>siteB</Name>
+          <Host>10.0.0.2</Host>
+          <Port>22</Port>
+          <Protocol>1</Protocol>
+          <Logontype>1</Logontype>
+          <User>rootb</User>
+        </Server>
+      </Folder>
+    </Folder>
+  </Servers>
+</FileZilla3>`
+	hosts, err := ParseFileZilla([]byte(raw))
+	if err != nil {
+		t.Fatalf("ParseFileZilla error: %v", err)
+	}
+	want := map[string]string{"siteA": "00_WDB", "siteB": "00_WDB/98_LEGACY"}
+	got := map[string]string{}
+	for _, h := range hosts {
+		got[h.Name] = h.Path
+	}
+	for name, wantPath := range want {
+		if got[name] != wantPath {
+			t.Errorf("%s: got path %q want %q", name, got[name], wantPath)
+		}
+	}
+}

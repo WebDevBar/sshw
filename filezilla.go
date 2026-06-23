@@ -3,6 +3,7 @@ package sshw
 import (
 	"encoding/base64"
 	"encoding/xml"
+	"strings"
 )
 
 // fzPass is a <Pass encoding="base64"> element.
@@ -27,7 +28,7 @@ type fzServer struct {
 // fzFolder maps to a <Folder> element.
 type fzFolder struct {
 	XMLName xml.Name   `xml:"Folder"`
-	Name    string     `xml:"Name,attr"`
+	Name    string     `xml:",chardata"`
 	Servers []fzServer `xml:"Server"`
 	Folders []fzFolder `xml:"Folder"`
 }
@@ -153,11 +154,12 @@ func collectServers(servers []fzServer, path string, out *[]importedHost) {
 
 func collectFolders(folders []fzFolder, parentPath string, out *[]importedHost) {
 	for _, f := range folders {
+		name := strings.TrimSpace(f.Name)
 		var path string
 		if parentPath == "" {
-			path = f.Name
+			path = name
 		} else {
-			path = parentPath + "/" + f.Name
+			path = parentPath + "/" + name
 		}
 		collectServers(f.Servers, path, out)
 		collectFolders(f.Folders, path, out)
